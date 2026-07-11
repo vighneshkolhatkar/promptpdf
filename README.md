@@ -50,6 +50,14 @@ No database, no paid services, no usage-based billing anywhere in this stack.
 
 Rotate, delete, reorder, extract, and crop pages · add text, page numbers, and watermarks · draw or upload a signature and place it · stamp an image · redact text (see below) · highlight text · fill and flatten AcroForm fields · merge in other uploaded PDFs · split into multiple files · best-effort image compression.
 
+## Security posture
+
+- **Request validation**: `/api/plan` validates the incoming request against a strict schema (`lib/requestSchema.ts`) — capped message count/length, capped context field sizes — and rejects oversized bodies outright, before any LLM call is made.
+- **Rate limiting**: a simple in-memory, per-IP limiter (see limitation below).
+- **Error handling**: the route never returns a raw stack trace or internal validation detail to the client. Failures are logged server-side (`console.error`) with full detail and return a generic, safe message to the caller.
+- **No accounts, no server-side storage of your files or documents** — there's nothing to breach on that front, because it doesn't exist.
+- **Dependencies**: audited with `npm audit`; Dependabot is configured (`.github/dependabot.yml`) for weekly automated update PRs. One accepted residual risk: Next.js 16.2.10 bundles its own `postcss@8.4.31` internally (build-time CSS tooling, not part of the runtime request path), which has a known moderate advisory; it can only be resolved by a future Next.js release bumping that internal pin, not by anything in this project's own dependency tree.
+
 ## Known limitations (read before relying on this for sensitive documents)
 
 - **Redaction**: when "redact this text" is the only structural change to a page, the matched text is genuinely stripped out of the PDF's content stream — not just covered with a box — and a black box is drawn on top for a clear visual cue. If a single request also draws something else on the *same page* (e.g. "add a watermark and redact my SSN" in one go), that page falls back to a visual-only cover box, and the app tells you so in the results log. For guaranteed removal, redact as its own step.

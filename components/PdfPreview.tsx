@@ -20,17 +20,20 @@ export function PdfPreview({ bytes, label, initialPage }: PdfPreviewProps) {
   // upload, or a freshly applied edit) — without this, the preview kept
   // showing page 1 even when the only change was on a different page (e.g.
   // a signature placed on the last page), which looked like the preview
-  // wasn't updating at all.
-  useEffect(() => {
+  // wasn't updating at all. Reset during render (React's documented pattern
+  // for "adjusting state when a prop changes") rather than in an effect, so
+  // it doesn't cost an extra render pass.
+  const [prevBytes, setPrevBytes] = useState(bytes);
+  if (bytes !== prevBytes) {
+    setPrevBytes(bytes);
     setCurrentPage(initialPage ?? 1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bytes]);
+    setError(null);
+  }
 
   useEffect(() => {
     if (!bytes) return;
     let cancelled = false;
     let renderTask: { promise: Promise<void>; cancel: () => void } | null = null;
-    setError(null);
 
     (async () => {
       try {
@@ -58,6 +61,7 @@ export function PdfPreview({ bytes, label, initialPage }: PdfPreviewProps) {
         // instead of leaving a stale frame on screen.
         renderTask = page.render({ canvasContext: ctx, viewport: scaledViewport, canvas });
         await renderTask.promise;
+        if (!cancelled) setError(null);
       } catch (e) {
         const isCancellation = e instanceof Error && e.name === "RenderingCancelledException";
         if (!cancelled && !isCancellation) setError(e instanceof Error ? e.message : "Could not render preview.");
