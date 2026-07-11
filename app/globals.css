@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  body {
+    background-color: #faf9f6;
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(17, 19, 24, 0.06) 1px, transparent 0);
+    background-size: 24px 24px;
+  }
+}
+
+@layer utilities {
+  .grain-card {
+    background-color: #ffffff;
+    border: 1px solid rgba(17, 19, 24, 0.08);
+  }
+}
