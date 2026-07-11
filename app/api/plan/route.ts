@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Groq, { BadRequestError } from "groq-sdk";
 import { SYSTEM_PROMPT, submitEditPlanTool } from "@/lib/llmTools";
 import { parseEditPlan } from "@/lib/planSchema";
-import type { ChatMessage, DocumentContext } from "@/lib/types";
+import { planRequestSchema } from "@/lib/requestSchema";
 
 export const runtime = "nodejs";
 
@@ -23,12 +23,19 @@ function isRateLimited(key: string): boolean {
   return timestamps.length > REQUESTS_PER_WINDOW;
 }
 
-interface PlanRequestBody {
-  messages: ChatMessage[];
-  documentContext: DocumentContext;
+// Belt-and-suspenders cap on raw request size, checked before JSON.parse —
+// the zod schema below already bounds every field individually, but this
+// rejects an oversized payload cheaply without paying for a parse first.
+const MAX_BODY_BYTES = 300_000;
+
+function clientIp(req: NextRequest): string {
+  // Trustworthy on Vercel specifically: their edge network sets/overwrites
+  // x-forwarded-for itself, so a client can't spoof it there. Self-hosting
+  // behind a different proxy would need the same guarantee re-verified.
+  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
 }
 
-export async function POST(req: NextRequest) {
+async function handlePost(req: NextRequest): Promise<NextResponse> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
@@ -37,24 +44,33 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  if (isRateLimited(ip)) {
+  if (isRateLimited(clientIp(req))) {
     return NextResponse.json({ error: "Too many requests. Please wait a few minutes and try again." }, { status: 429 });
   }
 
-  let body: PlanRequestBody;
+  const rawBody = await req.text();
+  if (rawBody.length > MAX_BODY_BYTES) {
+    return NextResponse.json({ error: "Request body too large." }, { status: 413 });
+  }
+
+  let parsedJson: unknown;
   try {
-    body = await req.json();
+    parsedJson = JSON.parse(rawBody);
   } catch {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  if (!Array.isArray(body.messages) || body.messages.length === 0 || !body.documentContext) {
-    return NextResponse.json({ error: "Missing 'messages' or 'documentContext'." }, { status: 400 });
+  const bodyResult = planRequestSchema.safeParse(parsedJson);
+  if (!bodyResult.success) {
+    // The shape of our own validation schema isn't something a client needs
+    // (or should be encouraged to probe) — log it for us, keep the response
+    // generic.
+    console.error("[/api/plan] request validation failed:", bodyResult.error.flatten());
+    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const { messages, documentContext } = body;
-  const { drawn, uploaded } = documentContext.availableSignatures ?? { drawn: false, uploaded: false };
+  const { messages, documentContext } = bodyResult.data;
+  const { drawn, uploaded } = documentContext.availableSignatures;
   const signatureLine = drawn && uploaded
     ? 'Signature: both a drawn signature and an uploaded signature image are available. Prefer signatureRef "uploaded" unless the user says otherwise.'
     : drawn
@@ -98,6 +114,7 @@ export async function POST(req: NextRequest) {
       tool_choice: { type: "function", function: { name: "submit_edit_plan" } },
     });
   } catch (err) {
+    console.error("[/api/plan] Groq API call failed:", err);
     // Occasionally the model emits a tool call that Groq's own strict
     // schema check rejects (e.g. a minor formatting slip in one field).
     // That's a model hiccup, not something the user did wrong or needs to
@@ -108,8 +125,7 @@ export async function POST(req: NextRequest) {
         { status: 502 }
       );
     }
-    const message = err instanceof Error ? err.message : "Unknown error contacting the LLM provider.";
-    return NextResponse.json({ error: `Groq API error: ${message}` }, { status: 502 });
+    return NextResponse.json({ error: "Could not reach the planning service. Please try again shortly." }, { status: 502 });
   }
 
   const toolCall = completion.choices[0]?.message?.tool_calls?.[0];
@@ -126,11 +142,20 @@ export async function POST(req: NextRequest) {
 
   const parsed = parseEditPlan(rawArgs);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "The model's plan didn't match the allowed operation schema.", details: parsed.error.flatten() },
-      { status: 502 }
-    );
+    console.error("[/api/plan] LLM output failed schema validation:", parsed.error.flatten());
+    return NextResponse.json({ error: "The model's plan didn't match the allowed operation schema. Please try again." }, { status: 502 });
   }
 
   return NextResponse.json(parsed.data);
+}
+
+export async function POST(req: NextRequest): Promise<NextResponse> {
+  try {
+    return await handlePost(req);
+  } catch (err) {
+    // Final safety net — never let an unexpected exception surface a stack
+    // trace or internal detail to the client.
+    console.error("[/api/plan] unhandled error:", err);
+    return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
+  }
 }
