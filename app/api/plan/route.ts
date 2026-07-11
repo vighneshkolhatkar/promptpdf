@@ -109,6 +109,10 @@ async function handlePost(req: NextRequest): Promise<NextResponse> {
     completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       temperature: 0.1,
+      // Generous enough for a full 20-operation plan with multi-paragraph
+      // add_text content (the from-scratch document creation case), but
+      // bounded rather than left open-ended.
+      max_tokens: 4096,
       messages: [{ role: "system", content: SYSTEM_PROMPT }, ...conversation],
       tools: [submitEditPlanTool],
       tool_choice: { type: "function", function: { name: "submit_edit_plan" } },

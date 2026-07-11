@@ -14,7 +14,7 @@ const chatMessageSchema = z.object({
 const documentContextSchema = z.object({
   pageCount: z.number().int().min(0).max(10000),
   pageSizes: z.array(z.object({ width: z.number(), height: z.number() })).max(10000),
-  textPreview: z.string().max(20000),
+  textPreview: z.string().max(10000), // client caps at 6000 (lib/pdfContext.ts); generous headroom above that
   formFields: z.array(z.object({ name: z.string().max(500), type: z.string().max(100) })).max(500),
   hasAuxiliaryFiles: z
     .array(z.object({ id: z.string().max(200), name: z.string().max(500), kind: z.enum(["pdf", "image"]) }))

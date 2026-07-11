@@ -24,8 +24,15 @@ export async function loadPdfDocument(bytes: ArrayBuffer | Uint8Array): Promise<
   return loadingTask.promise;
 }
 
-const MAX_CHARS_PER_PAGE = 800;
-const MAX_TOTAL_CHARS = 12000;
+// Kept deliberately tight — this text is resent to the LLM on every single
+// planning call in the conversation, so its size is a direct, recurring
+// token cost. The model mostly needs enough to understand structure and
+// content *presence* for planning (rotate/watermark/sign/etc. don't need
+// full text at all; redact/highlight matching happens client-side against
+// pdf.js-extracted positions, not against this preview), not a faithful
+// full-text copy.
+const MAX_CHARS_PER_PAGE = 500;
+const MAX_TOTAL_CHARS = 6000;
 
 export async function extractDocumentContext(
   bytes: ArrayBuffer | Uint8Array,
