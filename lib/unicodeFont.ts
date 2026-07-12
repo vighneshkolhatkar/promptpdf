@@ -33,7 +33,11 @@ const fontCaches = new WeakMap<PDFDocument, FontCacheEntry>();
 
 function isEncodableWith(font: PDFFont, text: string): boolean {
   try {
-    font.widthOfTextAtSize(text, 10);
+    // Line breaks are handled by drawText's own multi-line layout, not
+    // encoded as a glyph — WinAnsi has no mapping for "\n" itself, so
+    // leaving it in would fail this check (and trigger an unnecessary
+    // Unicode-font fetch) for perfectly ordinary multi-line ASCII text.
+    font.widthOfTextAtSize(text.replace(/\r\n|\r|\n/g, ""), 10);
     return true;
   } catch {
     return false;

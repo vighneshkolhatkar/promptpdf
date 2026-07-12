@@ -423,6 +423,9 @@ export default function Home() {
                       </button>
                     ))}
                   </div>
+                  <p className="font-mono text-[12px] text-graphite">
+                    Not quite right? Just describe the change below — edits build on this result.
+                  </p>
                 </div>
               )}
             </div>

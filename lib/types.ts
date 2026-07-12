@@ -49,6 +49,13 @@ export interface OpCropPages {
   marginPct: number; // shrink each side by this % of page dimension
 }
 
+export interface OpAddBlankPages {
+  op: "add_blank_pages";
+  count: number;
+  position?: "start" | "end"; // defaults to "end"
+  pageSize?: "letter" | "a4"; // defaults to matching the adjacent existing page
+}
+
 export interface OpAddText {
   op: "add_text";
   pages: PageSelector;
@@ -133,6 +140,7 @@ export type Operation =
   | OpReorderPages
   | OpExtractPages
   | OpCropPages
+  | OpAddBlankPages
   | OpAddText
   | OpAddPageNumbers
   | OpAddWatermark

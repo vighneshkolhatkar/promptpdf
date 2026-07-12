@@ -6,6 +6,7 @@ import {
   degrees,
   rgb,
 } from "pdf-lib";
+import type { PDFFont } from "pdf-lib";
 import type { Operation, PageSelector, Position } from "./types";
 import { applyRedaction, findTextPositions } from "./redact";
 import { resolveFont } from "./unicodeFont";
@@ -96,6 +97,37 @@ function resolvePosition(
     case "bottom-right":
       return { x: pageWidth - marginX - elemWidth, y: marginY };
   }
+}
+
+// Wraps text to fit within maxWidth, regardless of whether the model
+// inserted its own line breaks — drawText has no word-wrap of its own, so
+// without this, a model that writes one long unbroken line (rather than
+// reliably following the system prompt's "\n every ~90 chars" guidance)
+// produces text that runs off the right edge of the page. Explicit "\n" in
+// the input is still respected as an intentional paragraph/section break.
+function wrapTextToWidth(text: string, font: PDFFont, fontSize: number, maxWidth: number): string[] {
+  const lines: string[] = [];
+  for (const paragraph of text.split(/\r\n|\r|\n/)) {
+    if (paragraph.length === 0) {
+      lines.push("");
+      continue;
+    }
+    let currentLine = "";
+    for (const word of paragraph.split(" ")) {
+      const candidate = currentLine ? `${currentLine} ${word}` : word;
+      // Let a single word that's wider than maxWidth through on its own
+      // line (e.g. a long URL) rather than looping forever trying to
+      // shrink it further.
+      if (!currentLine || font.widthOfTextAtSize(candidate, fontSize) <= maxWidth) {
+        currentLine = candidate;
+      } else {
+        lines.push(currentLine);
+        currentLine = word;
+      }
+    }
+    lines.push(currentLine);
+  }
+  return lines;
 }
 
 function isPng(bytes: Uint8Array) {
@@ -220,16 +252,54 @@ async function applyOperation(
       return doc;
     }
 
+    case "add_blank_pages": {
+      const position = op.position ?? "end";
+      const referencePage = position === "start" ? pages[0] : pages[pages.length - 1];
+      const size: [number, number] =
+        op.pageSize === "a4"
+          ? PageSizes.A4
+          : op.pageSize === "letter"
+            ? PageSizes.Letter
+            : referencePage
+              ? [referencePage.getWidth(), referencePage.getHeight()]
+              : PageSizes.Letter;
+      for (let i = 0; i < op.count; i++) {
+        if (position === "start") doc.insertPage(i, size);
+        else doc.addPage(size);
+      }
+      log.push(`Added ${op.count} blank page(s) at the ${position} of the document.`);
+      return doc;
+    }
+
     case "add_text": {
       const font = await resolveFont(doc, op.text);
-      const indices = resolvePageIndices(op.pages, pages.length);
+      let indices = resolvePageIndices(op.pages, pages.length);
+      // A model that misjudges page numbers after add_blank_pages (off-by-
+      // one, or assuming more pages exist than it actually requested) would
+      // otherwise silently lose this content — 0 matched pages, nothing
+      // drawn, no visible error. Falling back to the last page is a much
+      // safer failure mode than dropping the user's requested content.
+      if (indices.length === 0 && pages.length > 0) {
+        indices = [pages.length - 1];
+        log.push(`add_text targeted a page that doesn't exist — placed on the last page instead.`);
+      }
       const fontSize = op.fontSize ?? 14;
+      const lineHeight = fontSize * 1.3;
       for (const i of indices) {
         const page = pages[i];
         const { width, height } = page.getSize();
-        const textWidth = font.widthOfTextAtSize(op.text, fontSize);
-        const { x, y } = resolvePosition(op.position, width, height, textWidth, fontSize);
-        page.drawText(op.text, { x, y, size: fontSize, font, color: hexToRgb(op.color) });
+        // Wrapped regardless of whether the model's own text already has
+        // "\n" breaks — see wrapTextToWidth for why relying on the model to
+        // get line lengths right isn't good enough on its own.
+        const maxLineWidth = width - 2 * (width * 0.05);
+        const lines = wrapTextToWidth(op.text, font, fontSize, maxLineWidth);
+        const blockHeight = fontSize + (lines.length - 1) * lineHeight;
+        const textWidth = Math.max(...lines.map((line) => font.widthOfTextAtSize(line, fontSize)));
+        const { x, y } = resolvePosition(op.position, width, height, textWidth, blockHeight);
+        // resolvePosition anchors as if placing a single line; shift up so
+        // the LAST line ends at that anchor instead of the first, which is
+        // what keeps bottom- and center-anchored multi-line blocks on-page.
+        page.drawText(lines.join("\n"), { x, y: y + (lines.length - 1) * lineHeight, size: fontSize, font, lineHeight, color: hexToRgb(op.color) });
       }
       log.push(`Added text to ${indices.length} page(s).`);
       return doc;

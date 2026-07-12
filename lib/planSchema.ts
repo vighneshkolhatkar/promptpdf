@@ -40,7 +40,13 @@ const position = z.union([
     "bottom-center",
     "bottom-right",
   ]),
-  z.object({ xPct: z.number().min(0).max(100), yPct: z.number().min(0).max(100) }),
+  // xPct defaults to a left-aligned 5% rather than being required — models
+  // stacking several add_text calls at different vertical positions (e.g.
+  // one per day of a workout plan) sometimes only specify the yPct that
+  // actually varies and reasonably expect a left-ish default for the rest,
+  // rather than repeating an unchanging xPct every time (observed in
+  // testing: a plan that varied only yPct got rejected outright over this).
+  z.object({ xPct: z.number().min(0).max(100).optional().default(5), yPct: z.number().min(0).max(100) }),
 ]);
 
 const hexColor = z
@@ -55,6 +61,12 @@ const operationSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("reorder_pages"), newOrder: z.array(z.number().int().positive()) }),
   z.object({ op: z.literal("extract_pages"), pages: pageSelector }),
   z.object({ op: z.literal("crop_pages"), pages: pageSelector, marginPct: z.number().min(0).max(45) }),
+  z.object({
+    op: z.literal("add_blank_pages"),
+    count: z.number().int().min(1).max(20),
+    position: z.enum(["start", "end"]).optional(),
+    pageSize: z.enum(["letter", "a4"]).optional(),
+  }),
   z.object({
     op: z.literal("add_text"),
     pages: pageSelector,

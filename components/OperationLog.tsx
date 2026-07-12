@@ -20,6 +20,8 @@ export function describeOperation(op: Operation): string {
       return `Extract ${describePages(op.pages)} into a new file`;
     case "crop_pages":
       return `Crop ${describePages(op.pages)} by ${op.marginPct}% margin`;
+    case "add_blank_pages":
+      return `Add ${op.count} blank page(s) at the ${op.position ?? "end"} of the document`;
     case "add_text":
       return `Add text "${op.text}" to ${describePages(op.pages)}`;
     case "add_page_numbers":
@@ -42,8 +44,10 @@ export function describeOperation(op: Operation): string {
       return `Split into ${op.ranges.length} file(s)`;
     case "compress_pdf":
       return `Compress images in the file`;
-    default:
-      return "Unknown operation";
+    default: {
+      const _exhaustive: never = op;
+      return `Unknown operation: ${JSON.stringify(_exhaustive)}`;
+    }
   }
 }
 

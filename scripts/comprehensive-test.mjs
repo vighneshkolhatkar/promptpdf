@@ -3,7 +3,7 @@
 //   PDFJS_WORKER_SRC="file://$(pwd)/public/pdf.worker.min.mjs" npx tsx scripts/comprehensive-test.mjs
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
-const { extractDocumentContext } = await import("../lib/pdfContext.ts");
+const { extractDocumentContext, loadPdfDocument } = await import("../lib/pdfContext.ts");
 const { executePlan } = await import("../lib/pdfOperations.ts");
 
 let pass = 0;
@@ -99,6 +99,91 @@ const emptyAssets = { images: {}, auxPdfs: {} };
   const doc = await PDFDocument.load(out.bytes);
   const box = doc.getPage(0).getCropBox();
   check("crop_pages shrinks the crop box", box.width < 612 && box.height < 792, `${box.width}x${box.height}`);
+}
+
+// --- add_blank_pages ---
+{
+  const bytes = await makeBasicPdf(2);
+  const out = await executePlan(bytes, [{ op: "add_blank_pages", count: 2, position: "end" }], emptyAssets);
+  const ctx = await extractDocumentContext(out.bytes);
+  check("add_blank_pages appends the right count at the end", ctx.pageCount === 4, `got ${ctx.pageCount}`);
+  check(
+    "add_blank_pages keeps existing pages first",
+    ctx.textPreview.includes("Page 1 marker") && ctx.textPreview.includes("Page 2 marker"),
+    ctx.textPreview
+  );
+}
+{
+  const bytes = await makeBasicPdf(2);
+  const out = await executePlan(bytes, [{ op: "add_blank_pages", count: 1, position: "start" }], emptyAssets);
+  const ctx = await extractDocumentContext(out.bytes);
+  check("add_blank_pages prepends at the start", ctx.pageCount === 3, `got ${ctx.pageCount}`);
+  const firstPageText = ctx.textPreview.split("\n")[0];
+  check("add_blank_pages new first page is blank", !firstPageText.includes("marker"), firstPageText);
+}
+{
+  // add_blank_pages composed with add_text on the newly appended page —
+  // the exact pattern the model is now guided to use for "add a week's
+  // workout plan"-style requests.
+  const bytes = await makeBasicPdf(1);
+  const out = await executePlan(
+    bytes,
+    [
+      { op: "add_blank_pages", count: 1, position: "end" },
+      { op: "add_text", pages: [2], text: "Day 1: Push-ups\nDay 2: Squats", position: "top-left" },
+    ],
+    emptyAssets
+  );
+  const ctx = await extractDocumentContext(out.bytes);
+  check("add_blank_pages composes with add_text on the new page", ctx.pageCount === 2 && ctx.textPreview.includes("Day 1: Push-ups"), ctx.textPreview);
+}
+{
+  // Regression test: multi-line add_text anchored at the BOTTOM of the page
+  // used to place line 1's baseline at the margin and let every subsequent
+  // line draw *below* that (off the page) — drawText advances downward per
+  // line, so a naive single-line position calc clips a multi-line block.
+  // Verify via pdf.js's actual glyph transforms, not just text presence
+  // (text extraction doesn't care whether a glyph was on-page or not).
+  const bytes = await makeBasicPdf(1);
+  const out = await executePlan(
+    bytes,
+    [{ op: "add_text", pages: [1], text: "Line one\nLine two\nLine three", position: "bottom-left", fontSize: 12 }],
+    emptyAssets
+  );
+  const pdfDoc = await loadPdfDocument(out.bytes);
+  const page = await pdfDoc.getPage(1);
+  const textContent = await page.getTextContent();
+  const ys = textContent.items.map((item) => item.transform[5]);
+  check(
+    "multi-line add_text keeps every line's baseline on the page (bottom-anchored)",
+    ys.length > 0 && ys.every((y) => y >= 0 && y <= page.getViewport({ scale: 1 }).height),
+    `y positions: ${ys.join(", ")}`
+  );
+}
+{
+  // Regression test: a model that writes one long unbroken line (no "\n" of
+  // its own — the exact real-world failure this was caught by, live, in
+  // manual testing) used to run text off the right edge of the page.
+  // add_text must now wrap it automatically regardless.
+  const bytes = await makeBasicPdf(1);
+  const longLine =
+    "Weekly Workout Plan Monday: 30 minutes jogging, 30 minutes weightlifting Tuesday: 45 minutes yoga, 30 minutes cardio Wednesday: 30 minutes swimming";
+  const out = await executePlan(bytes, [{ op: "add_text", pages: [1], text: longLine, position: "top-left", fontSize: 12 }], emptyAssets);
+  const pdfDoc = await loadPdfDocument(out.bytes);
+  const page = await pdfDoc.getPage(1);
+  const pageWidth = page.getViewport({ scale: 1 }).width;
+  const textContent = await page.getTextContent();
+  // pdf.js emits one item per drawn line for text with embedded line
+  // breaks — more than one item here means the single long input line was
+  // actually split into multiple drawn lines, i.e. wrapping happened.
+  check("add_text wraps an unbroken long line into multiple lines", textContent.items.length > 1, `${textContent.items.length} line item(s)`);
+  const xs = textContent.items.map((item) => item.transform[4]);
+  const widths = textContent.items.map((item) => item.width ?? 0);
+  check(
+    "add_text wrapped lines stay within the page width",
+    xs.every((x, i) => x + widths[i] <= pageWidth),
+    `right edges: ${xs.map((x, i) => x + widths[i]).join(", ")} vs page width ${pageWidth}`
+  );
 }
 
 // --- add_text ---
