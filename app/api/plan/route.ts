@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import Groq, { BadRequestError } from "groq-sdk";
+import Groq, { BadRequestError, RateLimitError } from "groq-sdk";
 import { SYSTEM_PROMPT, submitEditPlanTool } from "@/lib/llmTools";
 import { parseEditPlan } from "@/lib/planSchema";
 import { planRequestSchema } from "@/lib/requestSchema";
@@ -127,65 +127,118 @@ async function handlePost(req: NextRequest): Promise<NextResponse> {
 
   const groq = new Groq({ apiKey });
 
-  let completion;
-  try {
-    completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      temperature: 0.1,
-      // Generous enough for a full 20-operation plan with multi-paragraph
-      // add_text content (the from-scratch document creation case), but
-      // bounded rather than left open-ended.
-      max_tokens: 4096,
-      messages: [{ role: "system", content: SYSTEM_PROMPT }, ...conversation],
-      tools: [submitEditPlanTool],
-      tool_choice: { type: "function", function: { name: "submit_edit_plan" } },
-    });
-  } catch (err) {
-    console.error("[/api/plan] Groq API call failed:", err);
-    // Occasionally the model emits a tool call that Groq's own strict
-    // schema check rejects (e.g. a minor formatting slip in one field).
-    // That's a model hiccup, not something the user did wrong or needs to
-    // see a raw API dump about — ask them to retry rather than exposing it.
-    if (err instanceof BadRequestError) {
-      return NextResponse.json(
-        { error: "The model produced a plan in an unexpected format. Please try again — rephrasing slightly can help." },
+  // Groq's free tier caps tokens *per day, per model* — under real multi-user
+  // load the primary model can run dry well before the day is over. Each
+  // model on the account draws from its own separate quota, so falling
+  // through this list on a rate-limit (not on other errors — those aren't
+  // model-capacity issues and retrying won't help) pools all their daily
+  // budgets together instead of being capped by whichever is smallest.
+  // Ordered best-quality-first; every entry here is confirmed to support
+  // tool use on Groq (https://console.groq.com/docs/tool-use) and each
+  // draws its own separate free-tier daily token quota
+  // (https://console.groq.com/docs/rate-limits):
+  //   llama-3.3-70b-versatile            100K TPD
+  //   llama-4-scout-17b-16e-instruct      500K TPD
+  //   openai/gpt-oss-120b                 200K TPD
+  //   qwen/qwen3-32b                      500K TPD
+  //   openai/gpt-oss-20b                  200K TPD
+  //   llama-3.1-8b-instant                500K TPD  (smallest model, but by
+  //                                        far the highest request/day cap —
+  //                                        last-resort safety net)
+  const MODEL_FALLBACK_CHAIN = [
+    "llama-3.3-70b-versatile",
+    "meta-llama/llama-4-scout-17b-16e-instruct",
+    "openai/gpt-oss-120b",
+    "qwen/qwen3-32b",
+    "openai/gpt-oss-20b",
+    "llama-3.1-8b-instant",
+  ];
+
+  // Everything that can go wrong with a single model's response — API
+  // errors, a truncated generation, a missing/malformed tool call, or
+  // output that fails our schema — falls through to the next model in the
+  // chain rather than failing the request outright. A less-tested fallback
+  // model occasionally producing a bad tool call is exactly the kind of
+  // hiccup another model in the chain can paper over, and the whole point
+  // of the chain is to keep the user unblocked whenever there's any healthy
+  // model left to try.
+  let lastErrorResponse: NextResponse | null = null;
+  for (let i = 0; i < MODEL_FALLBACK_CHAIN.length; i++) {
+    const model = MODEL_FALLBACK_CHAIN[i];
+
+    let completion;
+    try {
+      completion = await groq.chat.completions.create({
+        model,
+        temperature: 0.1,
+        // Generous enough for a full 20-operation plan with multi-paragraph
+        // add_text content (the from-scratch document creation case), but
+        // bounded rather than left open-ended.
+        max_tokens: 4096,
+        messages: [{ role: "system", content: SYSTEM_PROMPT }, ...conversation],
+        tools: [submitEditPlanTool],
+        tool_choice: { type: "function", function: { name: "submit_edit_plan" } },
+      });
+    } catch (err) {
+      console.error(`[/api/plan] Groq API call failed (model=${model}):`, err);
+      lastErrorResponse = NextResponse.json(
+        err instanceof RateLimitError
+          ? { error: "PromptPDF is getting a lot of use right now and has hit its free daily AI limit. Please try again later." }
+          // Occasionally the model emits a tool call that Groq's own strict
+          // schema check rejects (e.g. a minor formatting slip in one
+          // field, or a model-specific context-window overflow). That's a
+          // model hiccup, not something the user did wrong or needs to see
+          // a raw API dump about.
+          : { error: "The model produced a plan in an unexpected format. Please try again — rephrasing slightly can help." },
         { status: 502 }
       );
+      continue;
     }
-    return NextResponse.json({ error: "Could not reach the planning service. Please try again shortly." }, { status: 502 });
+
+    const choice = completion.choices[0];
+    if (choice?.finish_reason === "length") {
+      // Hit max_tokens mid-generation — the JSON is very likely incomplete.
+      // Don't attempt to "repair" and execute a guessed-at plan against a
+      // real file; a wrong guess here means a silently wrong edit.
+      console.error(`[/api/plan] generation truncated at max_tokens (model=${model})`);
+      lastErrorResponse = NextResponse.json(
+        { error: "That request needed a longer response than allowed. Try breaking it into smaller steps." },
+        { status: 502 }
+      );
+      continue;
+    }
+
+    const toolCall = choice?.message?.tool_calls?.[0];
+    if (!toolCall || toolCall.function.name !== "submit_edit_plan") {
+      lastErrorResponse = NextResponse.json(
+        { error: "The model did not return a usable edit plan. Try rephrasing your request." },
+        { status: 502 }
+      );
+      continue;
+    }
+
+    let rawArgs: unknown;
+    try {
+      rawArgs = JSON.parse(toolCall.function.arguments);
+    } catch {
+      lastErrorResponse = NextResponse.json({ error: "The model returned malformed plan data." }, { status: 502 });
+      continue;
+    }
+
+    const parsed = parseEditPlan(rawArgs);
+    if (!parsed.success) {
+      console.error(`[/api/plan] LLM output failed schema validation (model=${model}):`, parsed.error.flatten());
+      lastErrorResponse = NextResponse.json(
+        { error: "The model's plan didn't match the allowed operation schema. Please try again." },
+        { status: 502 }
+      );
+      continue;
+    }
+
+    return NextResponse.json(parsed.data);
   }
 
-  const choice = completion.choices[0];
-  if (choice?.finish_reason === "length") {
-    // Hit max_tokens mid-generation — the JSON is very likely incomplete.
-    // Don't attempt to "repair" and execute a guessed-at plan against a
-    // real file; a wrong guess here means a silently wrong edit.
-    console.error("[/api/plan] generation truncated at max_tokens");
-    return NextResponse.json(
-      { error: "That request needed a longer response than allowed. Try breaking it into smaller steps." },
-      { status: 502 }
-    );
-  }
-
-  const toolCall = choice?.message?.tool_calls?.[0];
-  if (!toolCall || toolCall.function.name !== "submit_edit_plan") {
-    return NextResponse.json({ error: "The model did not return a usable edit plan. Try rephrasing your request." }, { status: 502 });
-  }
-
-  let rawArgs: unknown;
-  try {
-    rawArgs = JSON.parse(toolCall.function.arguments);
-  } catch {
-    return NextResponse.json({ error: "The model returned malformed plan data." }, { status: 502 });
-  }
-
-  const parsed = parseEditPlan(rawArgs);
-  if (!parsed.success) {
-    console.error("[/api/plan] LLM output failed schema validation:", parsed.error.flatten());
-    return NextResponse.json({ error: "The model's plan didn't match the allowed operation schema. Please try again." }, { status: 502 });
-  }
-
-  return NextResponse.json(parsed.data);
+  return lastErrorResponse ?? NextResponse.json({ error: "Could not reach the planning service. Please try again shortly." }, { status: 502 });
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
