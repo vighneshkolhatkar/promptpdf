@@ -68,17 +68,27 @@ export async function extractDocumentContext(
     pageSizes.push({ width: viewport.width, height: viewport.height });
 
     if (totalChars < MAX_TOTAL_CHARS) {
-      const textContent = await page.getTextContent();
-      let text = textContent.items
-        .map((item) => ("str" in item ? item.str : ""))
-        .join(" ")
-        .replace(/\s+/g, " ")
-        .trim();
-      if (text.length > MAX_CHARS_PER_PAGE) {
-        text = text.slice(0, MAX_CHARS_PER_PAGE) + "…";
+      // Some PDFs (font/encoding quirks pdf.js's getTextContent trips on —
+      // seen concretely on WebKit/Safari) throw here even though the page
+      // renders and every other operation on it works fine. Text preview is
+      // only ever used as LLM context, not for rendering or editing, so a
+      // per-page failure here shouldn't block the whole document from
+      // loading — just skip that page's text.
+      try {
+        const textContent = await page.getTextContent();
+        let text = textContent.items
+          .map((item) => ("str" in item ? item.str : ""))
+          .join(" ")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (text.length > MAX_CHARS_PER_PAGE) {
+          text = text.slice(0, MAX_CHARS_PER_PAGE) + "…";
+        }
+        pageTexts.push(`[Page ${i}] ${text}`);
+        totalChars += text.length;
+      } catch {
+        pageTexts.push(`[Page ${i}] (text unavailable)`);
       }
-      pageTexts.push(`[Page ${i}] ${text}`);
-      totalChars += text.length;
     }
   }
 
