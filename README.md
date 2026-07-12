@@ -50,6 +50,12 @@ No database, no paid services, no usage-based billing anywhere in this stack.
 
 Rotate, delete, reorder, extract, and crop pages · add text, page numbers, and watermarks · draw or upload a signature and place it · stamp an image · redact text (see below) · highlight text · fill and flatten AcroForm fields · merge in other uploaded PDFs · split into multiple files · best-effort image compression.
 
+### Filling a form from other documents, in any language
+
+"Additional files" isn't limited to PDFs/images to merge or stamp — upload PDF, DOCX, or TXT source documents there too (e.g. a filled-out reference form, a letter, an ID) and ask PromptPDF to use their content to fill out or write into the main document: *"Fill out this form using the info in `passport-details.docx`"*. The source can be in any language — the model reads and understands it (Hindi is officially well-supported by the underlying Llama model; other languages, including other Indic scripts like Marathi, are best-effort — the app tells you when it's less confident). Values are used as written by default (no silent translation/transliteration) so a name or address doesn't get subtly altered.
+
+Non-Latin text (Devanagari script, e.g. Hindi/Marathi) is rendered with a bundled Noto Sans Devanagari font, embedded on demand — pdf-lib's built-in fonts only support Western European (WinAnsi) text and would otherwise throw outright on this content. Image-only source files aren't readable as text (no OCR in this version) — they can still be used as stamps.
+
 ## Security posture
 
 - **Request validation**: `/api/plan` validates the incoming request against a strict schema (`lib/requestSchema.ts`) — capped message count/length, capped context field sizes — and rejects oversized bodies outright, before any LLM call is made.
@@ -57,6 +63,10 @@ Rotate, delete, reorder, extract, and crop pages · add text, page numbers, and 
 - **Error handling**: the route never returns a raw stack trace or internal validation detail to the client. Failures are logged server-side (`console.error`) with full detail and return a generic, safe message to the caller.
 - **No accounts, no server-side storage of your files or documents** — there's nothing to breach on that front, because it doesn't exist.
 - **Dependencies**: audited with `npm audit`; Dependabot is configured (`.github/dependabot.yml`) for weekly automated update PRs. One accepted residual risk: Next.js 16.2.10 bundles its own `postcss@8.4.31` internally (build-time CSS tooling, not part of the runtime request path), which has a known moderate advisory; it can only be resolved by a future Next.js release bumping that internal pin, not by anything in this project's own dependency tree.
+
+## Third-party assets
+
+`public/fonts/NotoSansDevanagari-Regular.ttf` is Google's [Noto Sans Devanagari](https://fonts.google.com/noto/specimen/Noto+Sans+Devanagari), licensed under the SIL Open Font License 1.1 — free to bundle and embed.
 
 ## Known limitations (read before relying on this for sensitive documents)
 

@@ -17,8 +17,18 @@ const documentContextSchema = z.object({
   textPreview: z.string().max(10000), // client caps at 6000 (lib/pdfContext.ts); generous headroom above that
   formFields: z.array(z.object({ name: z.string().max(500), type: z.string().max(100) })).max(500),
   hasAuxiliaryFiles: z
-    .array(z.object({ id: z.string().max(200), name: z.string().max(500), kind: z.enum(["pdf", "image"]) }))
-    .max(50),
+    .array(
+      z.object({
+        id: z.string().max(200),
+        name: z.string().max(500),
+        kind: z.enum(["pdf", "image", "docx", "text"]),
+        textPreview: z.string().max(5000).optional(), // client caps at 4000 (lib/auxFileText.ts)
+      })
+    )
+    // Lowered from a generic 50 now that entries can carry real text
+    // content, not just a filename — bounds worst-case token cost from a
+    // pathological number of source-document uploads.
+    .max(10),
   availableSignatures: z.object({ drawn: z.boolean(), uploaded: z.boolean() }),
 });
 

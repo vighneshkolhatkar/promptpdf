@@ -96,7 +96,6 @@ const operationSchema = z.discriminatedUnion("op", [
     fields: z.array(z.object({ name: z.string().min(1), value: z.string() })).max(200),
     flatten: z.boolean().optional(),
   }),
-  z.object({ op: z.literal("encrypt_pdf"), userPassword: z.string().min(1).max(200) }),
   z.object({ op: z.literal("merge_pdfs"), fileRefs: z.array(z.string()).min(1) }),
   z.object({
     op: z.literal("split_pdf"),

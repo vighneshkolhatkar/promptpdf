@@ -11,13 +11,24 @@ import { SignatureModal } from "@/components/SignatureModal";
 import { OperationLog, describeOperation } from "@/components/OperationLog";
 import { extractDocumentContext } from "@/lib/pdfContext";
 import { executePlan, createStarterBlankPdf, type ExecutionAssets } from "@/lib/pdfOperations";
-import type { ChatMessage, DocumentContext, EditPlan } from "@/lib/types";
+import { parseEditPlan } from "@/lib/planSchema";
+import { extractAuxFileText } from "@/lib/auxFileText";
+import type { AuxFileKind, ChatMessage, DocumentContext, EditPlan } from "@/lib/types";
 
 interface AuxFile {
   id: string;
   name: string;
-  kind: "pdf" | "image";
+  kind: AuxFileKind;
   bytes: Uint8Array;
+  textPreview?: string;
+}
+
+function classifyAuxFile(file: File): AuxFileKind {
+  const name = file.name.toLowerCase();
+  if (file.type === "application/pdf" || name.endsWith(".pdf")) return "pdf";
+  if (file.type.startsWith("image/") || /\.(png|jpe?g)$/.test(name)) return "image";
+  if (name.endsWith(".docx") || file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return "docx";
+  return "text"; // .txt and anything else we can at least try to decode as text
 }
 
 type BaseContext = Omit<DocumentContext, "hasAuxiliaryFiles" | "availableSignatures">;
@@ -69,7 +80,7 @@ export default function Home() {
     if (!baseContext) return null;
     return {
       ...baseContext,
-      hasAuxiliaryFiles: auxFiles.map(({ id, name, kind }) => ({ id, name, kind })),
+      hasAuxiliaryFiles: auxFiles.map(({ id, name, kind, textPreview }) => ({ id, name, kind, textPreview })),
       availableSignatures: { drawn: !!signature.drawn, uploaded: !!signature.uploaded },
     };
   }, [baseContext, auxFiles, signature]);
@@ -114,9 +125,15 @@ export default function Home() {
   async function handleAuxFiles(files: File[]) {
     const additions: AuxFile[] = [];
     for (const file of files) {
-      const kind: AuxFile["kind"] = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf") ? "pdf" : "image";
+      const kind = classifyAuxFile(file);
       const bytes = new Uint8Array(await file.arrayBuffer());
-      additions.push({ id: `file-${Date.now()}-${additions.length}`, name: file.name, kind, bytes });
+      // Extract text up front (not lazily at plan time) so the user can see
+      // in the file list whether a source document was actually readable —
+      // a scanned/image-only PDF or an unsupported format won't get one,
+      // and it's better to surface that now than to have the LLM silently
+      // miss the data later.
+      const textPreview = await extractAuxFileText(bytes, kind);
+      additions.push({ id: `file-${Date.now()}-${additions.length}`, name: file.name, kind, bytes, textPreview });
     }
     setAuxFiles((prev) => [...prev, ...additions]);
   }
@@ -140,7 +157,15 @@ export default function Home() {
         setError(data.error ?? "Something went wrong generating the plan.");
         return;
       }
-      const editPlan = data as EditPlan;
+      // Defense in depth: the server already validates this, but the
+      // client executes it — never trust a network response blindly right
+      // before running it against a real file.
+      const parsed = parseEditPlan(data);
+      if (!parsed.success) {
+        setError("Received an unexpected response shape from the planning service. Please try again.");
+        return;
+      }
+      const editPlan = parsed.data;
       setPlan(editPlan);
       // Keep the conversation going either way — a clarification question or
       // a proposed plan both become part of the history, so the user's next
@@ -201,7 +226,16 @@ export default function Home() {
       setApplyCount((n) => n + 1);
       setPlan(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not apply this edit plan.");
+      const message = e instanceof Error ? e.message : "Could not apply this edit plan.";
+      setError(message);
+      // Feed the failure back into the conversation (not just the UI error
+      // banner) so the next planning call has it as context and can
+      // propose something that actually works, instead of the user having
+      // to describe the failure back to it themselves.
+      setConversation((prev) => [
+        ...prev,
+        { role: "assistant", content: `That plan failed to apply: ${message}. I'll need to propose something different.` },
+      ]);
     } finally {
       setIsExecuting(false);
     }
@@ -286,18 +320,25 @@ export default function Home() {
                 <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-graphite">Additional files</p>
                 <div className="redact-rule mt-1.5 w-6" />
                 <p className="mt-3 font-mono text-[12px] leading-relaxed text-graphite">
-                  For merging or stamping — reference by name in your prompt.
+                  For merging, stamping, or as a source of info to fill this document — any language. Reference by name in
+                  your prompt.
                 </p>
                 <ul className="mt-2 space-y-1 font-mono text-[13px]">
                   {auxFiles.map((f) => (
                     <li key={f.id} className="text-ink">
-                      {f.name} <span className="text-graphite">({f.kind})</span>
+                      {f.name} <span className="text-graphite">({f.kind}{f.textPreview ? ", read" : f.kind !== "image" ? ", unreadable" : ""})</span>
                     </li>
                   ))}
                 </ul>
                 <label className="mt-2 inline-block cursor-pointer font-mono text-[13px] text-pen hover:underline">
                   + Add file
-                  <input type="file" accept="application/pdf,image/png,image/jpeg" multiple className="hidden" onChange={(e) => handleAuxFiles(Array.from(e.target.files ?? []))} />
+                  <input
+                    type="file"
+                    accept="application/pdf,image/png,image/jpeg,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.txt,text/plain"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => handleAuxFiles(Array.from(e.target.files ?? []))}
+                  />
                 </label>
               </div>
             </div>

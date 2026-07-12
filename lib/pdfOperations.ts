@@ -3,13 +3,12 @@ import {
   PDFName,
   PDFRawStream,
   PageSizes,
-  StandardFonts,
   degrees,
   rgb,
 } from "pdf-lib";
-import type { PDFFont } from "pdf-lib";
 import type { Operation, PageSelector, Position } from "./types";
 import { applyRedaction, findTextPositions } from "./redact";
+import { resolveFont } from "./unicodeFont";
 
 export interface ExecutionAssets {
   drawnSignaturePng?: Uint8Array;
@@ -152,12 +151,6 @@ async function compressImages(doc: PDFDocument, quality: number, log: string[]) 
   );
 }
 
-let cachedFont: PDFFont | null = null;
-async function getFont(doc: PDFDocument) {
-  if (!cachedFont) cachedFont = await doc.embedFont(StandardFonts.Helvetica);
-  return cachedFont;
-}
-
 async function applyOperation(
   doc: PDFDocument,
   op: Operation,
@@ -218,7 +211,7 @@ async function applyOperation(
     }
 
     case "add_text": {
-      const font = await getFont(doc);
+      const font = await resolveFont(doc, op.text);
       const indices = resolvePageIndices(op.pages, pages.length);
       const fontSize = op.fontSize ?? 14;
       for (const i of indices) {
@@ -233,10 +226,10 @@ async function applyOperation(
     }
 
     case "add_page_numbers": {
-      const font = await getFont(doc);
       const total = pages.length;
       const start = op.startAt ?? 1;
       const format = op.format ?? "Page {n} of {total}";
+      const font = await resolveFont(doc, format);
       pages.forEach((page, i) => {
         const label = format.replace("{n}", String(start + i)).replace("{total}", String(total));
         const { width } = page.getSize();
@@ -256,7 +249,7 @@ async function applyOperation(
     }
 
     case "add_watermark": {
-      const font = await getFont(doc);
+      const font = await resolveFont(doc, op.text);
       const indices = resolvePageIndices(op.pages ?? "all", pages.length);
       const fontSize = op.fontSize ?? 60;
       for (const i of indices) {
@@ -338,6 +331,13 @@ async function applyOperation(
     case "fill_form_fields": {
       const form = doc.getForm();
       let filled = 0;
+      // Any field's value might need the Unicode fallback font (e.g. a
+      // name filled in from a Hindi source document) — resolve once
+      // against everything being written and apply it uniformly, rather
+      // than letting pdf-lib silently fall back to its default WinAnsi-only
+      // Helvetica at save time, which throws outright on non-Latin text.
+      const combinedValues = op.fields.map((f) => f.value).join(" ");
+      const fieldFont = await resolveFont(doc, combinedValues);
       for (const { name, value } of op.fields) {
         try {
           const tf = form.getTextField(name);
@@ -372,7 +372,11 @@ async function applyOperation(
           log.push(`Could not find or fill form field "${name}".`);
         }
       }
-      if (op.flatten) form.flatten();
+      // Generate appearances with the resolved font ourselves — leaving
+      // this to happen implicitly (at .save() or inside flatten()) would
+      // use pdf-lib's default Helvetica and throw on non-Latin text.
+      form.updateFieldAppearances(fieldFont);
+      if (op.flatten) form.flatten({ updateFieldAppearances: false });
       log.push(`Filled ${filled} of ${op.fields.length} form field(s)${op.flatten ? " and flattened the form." : "."}`);
       return doc;
     }

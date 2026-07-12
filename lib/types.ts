@@ -151,12 +151,19 @@ export interface EditPlan {
   clarificationNeeded?: string;
 }
 
+// "pdf"/"image" are usable by their raw bytes (merge_pdfs, add_stamp_image
+// respectively); "docx"/"text" are readable only as extracted text — a
+// source of data for fill_form_fields/add_text, never mergeable or
+// stampable. A pdf can be both bytes-usable and (via textPreview below) a
+// text data source at once.
+export type AuxFileKind = "pdf" | "image" | "docx" | "text";
+
 export interface DocumentContext {
   pageCount: number;
   pageSizes: { width: number; height: number }[];
   textPreview: string; // truncated, per-page-tagged text
   formFields: { name: string; type: string }[];
-  hasAuxiliaryFiles: { id: string; name: string; kind: "pdf" | "image" }[];
+  hasAuxiliaryFiles: { id: string; name: string; kind: AuxFileKind; textPreview?: string }[];
   availableSignatures: { drawn: boolean; uploaded: boolean };
 }
 
