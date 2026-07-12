@@ -1,3 +1,4 @@
+import { PDFDocument as PDFLibDocument } from "pdf-lib";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { DocumentContext } from "./types";
 
@@ -92,17 +93,26 @@ export async function extractDocumentContext(
     }
   }
 
+  // Read form fields via pdf-lib rather than pdf.js's getFieldObjects().
+  // pdf-lib is a completely separate implementation (no font/glyph text
+  // extraction involved) and is the same library that actually performs
+  // fill_form_fields later — so the fields we tell the LLM about are
+  // guaranteed to be the ones we can actually fill, and this sidesteps the
+  // pdf.js/WebKit font-encoding quirks that can silently zero out field
+  // detection here (the same class of bug as the getTextContent crash
+  // above) without any indication that anything went wrong.
   let formFields: DocumentContext["formFields"] = [];
   try {
-    const fieldObjects = await doc.getFieldObjects();
-    if (fieldObjects) {
-      formFields = Object.entries(fieldObjects).map(([name, entries]) => ({
-        name,
-        type: (entries[0] as { type?: string } | undefined)?.type ?? "unknown",
+    const formDoc = await PDFLibDocument.load(bytes, { ignoreEncryption: true });
+    formFields = formDoc
+      .getForm()
+      .getFields()
+      .map((field) => ({
+        name: field.getName(),
+        type: field.constructor.name.replace(/^PDF/, "").replace(/Field$/, "") || "unknown",
       }));
-    }
   } catch {
-    // Non-fatal: some PDFs have no AcroForm, or pdf.js can't introspect it.
+    // Non-fatal: some PDFs have no AcroForm, or it can't be parsed as one.
   }
 
   return {
