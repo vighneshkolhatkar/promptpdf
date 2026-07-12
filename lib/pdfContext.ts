@@ -1,6 +1,24 @@
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { DocumentContext } from "./types";
 
+// pdfjs-dist 6.x calls Promise.withResolvers() internally — including in the
+// "legacy" build — but that method only landed in Safari 17.4 (March 2024).
+// On any iPhone running an older iOS this throws "undefined is not a
+// function" the instant a PDF is loaded. Polyfill it before pdf.js runs.
+// (The worker thread has its own separate global scope, so this alone
+// doesn't cover code running there — see scripts/copy-pdf-worker.mjs.)
+if (typeof Promise.withResolvers !== "function") {
+  Promise.withResolvers = function withResolvers<T>() {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  };
+}
+
 let pdfjsLib: typeof import("pdfjs-dist/legacy/build/pdf.mjs") | null = null;
 
 // Lazily import pdfjs-dist and point it at its own worker build, copied
