@@ -5,11 +5,24 @@ import { z } from "zod";
 // untrusted input — nothing here is ever eval'd or executed as code, and
 // anything that fails this schema is rejected before any operation runs.
 
+function numericStringToNumber(item: unknown): unknown {
+  return typeof item === "string" && /^[0-9]+$/.test(item) ? Number(item) : item;
+}
+
 const pageSelector = z.preprocess(
   // Defensive normalization: models occasionally emit ["all"] instead of
-  // the bare string "all" — coerce it here rather than rejecting an
-  // otherwise-valid plan over a trivial formatting slip.
-  (val) => (Array.isArray(val) && val.length === 1 && val[0] === "all" ? "all" : val),
+  // the bare string "all", a single page number as a bare number/numeric
+  // string instead of a one-element array, or an array of numeric strings
+  // (["1","3"]) instead of numbers — coerce all of these rather than
+  // rejecting an otherwise-valid plan over a trivial formatting slip (all
+  // observed in testing).
+  (val) => {
+    if (Array.isArray(val) && val.length === 1 && val[0] === "all") return "all";
+    if (typeof val === "number") return [val];
+    if (typeof val === "string" && /^[0-9]+$/.test(val)) return [Number(val)];
+    if (Array.isArray(val)) return val.map(numericStringToNumber);
+    return val;
+  },
   z.union([
     z.literal("all"),
     z.object({ from: z.number().int().positive(), to: z.number().int().positive() }),

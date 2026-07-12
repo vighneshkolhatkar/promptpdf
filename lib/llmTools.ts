@@ -11,19 +11,26 @@ const hexColorSchema = {
 
 const pageSelectorSchema = {
   description:
-    'Which pages to affect: EITHER the bare string "all" (not an array — do not write ["all"]), OR a {from,to} range object, OR an array of 1-indexed page numbers like [1,3,5].',
+    'Which pages to affect: EITHER the bare string "all" (not an array — do not write ["all"]), OR a {from,to} range object, OR an array of 1-indexed page numbers like [1,3,5] (for a single page, still use an array, e.g. [1] — not the bare number 1 or the string "1").',
   anyOf: [
     { const: "all" },
     // Some models occasionally wrap the "all" literal in a single-element
-    // array anyway; accepting that shape directly is cheaper and more
-    // reliable than hoping prompting alone prevents it.
+    // array anyway, or write a single page number as a bare number/string
+    // instead of a one-element array — accepting those shapes directly is
+    // cheaper and more reliable than hoping prompting alone prevents them
+    // (both observed in testing).
     { type: "array", items: { const: "all" }, minItems: 1, maxItems: 1 },
     {
       type: "object",
       properties: { from: { type: "integer", minimum: 1 }, to: { type: "integer", minimum: 1 } },
       required: ["from", "to"],
     },
-    { type: "array", items: { type: "integer", minimum: 1 } },
+    // Array items as numeric strings (e.g. ["1", "3"]) instead of integers
+    // has also been observed — accept either per item rather than rejecting
+    // the whole plan over it.
+    { type: "array", items: { anyOf: [{ type: "integer", minimum: 1 }, { type: "string", pattern: "^[0-9]+$" }] } },
+    { type: "integer", minimum: 1 },
+    { type: "string", pattern: "^[0-9]+$" },
   ],
 };
 

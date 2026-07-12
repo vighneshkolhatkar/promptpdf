@@ -63,10 +63,20 @@ function resolvePosition(
     // coordinate system (observed in testing: without this flip, closings
     // like "Sincerely, [name]" consistently landed near the top of the
     // page instead of the bottom).
+    //
+    // Interpolate within a margin-inset area (matching the named positions
+    // below) rather than the full page — mapping 0-100% directly onto the
+    // raw page and centering the element on that point pushes it partly
+    // off-page at the edges (yPct 0 or 100, xPct 0 or 100), which is
+    // exactly what "top-left" / "bottom-right" style requests tend to ask
+    // for (observed clipping the top of a "place this at the top" text in
+    // testing).
     const bottomUpYPct = 100 - position.yPct;
+    const usableWidth = Math.max(pageWidth - 2 * marginX - elemWidth, 0);
+    const usableHeight = Math.max(pageHeight - 2 * marginY - elemHeight, 0);
     return {
-      x: (position.xPct / 100) * pageWidth - elemWidth / 2,
-      y: (bottomUpYPct / 100) * pageHeight - elemHeight / 2,
+      x: marginX + (position.xPct / 100) * usableWidth,
+      y: marginY + (bottomUpYPct / 100) * usableHeight,
     };
   }
 
