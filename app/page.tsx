@@ -109,7 +109,11 @@ export default function Home() {
       const ctx = await extractDocumentContext(bytes);
       setBaseContext(ctx);
     } catch (e) {
-      setError(e instanceof Error ? `Could not read this PDF: ${e.message}` : "Could not read this PDF.");
+      // TEMPORARY: includes the stack trace in the visible error so it can
+      // be copy-pasted directly from Safari on a device without needing Web
+      // Inspector — remove once the Safari upload crash is root-caused.
+      const detail = e instanceof Error ? `${e.message}\n${e.stack ?? "(no stack)"}` : String(e);
+      setError(`Could not read this PDF: ${detail}`);
     }
   }
 
@@ -367,7 +371,7 @@ export default function Home() {
               <SuggestionChips onSelect={setPrompt} prompts={startedFromScratch ? CREATE_SUGGESTED_PROMPTS : SUGGESTED_PROMPTS} />
 
               {error && (
-                <div className="rounded-sm border border-pen/30 bg-pen-soft px-4 py-3 font-mono text-[13px] text-pen">{error}</div>
+                <div className="whitespace-pre-wrap break-words rounded-sm border border-pen/30 bg-pen-soft px-4 py-3 font-mono text-[13px] text-pen">{error}</div>
               )}
 
               {plan && !plan.clarificationNeeded && plan.operations.length > 0 && (
