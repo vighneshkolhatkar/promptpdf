@@ -11,3 +11,5 @@ next-env.d.ts
 # pdfjs-dist version is in package.json — committing it risks it going
 # stale relative to that version.
 public/pdf.worker.min.mjs
+.vercel
+.env*
