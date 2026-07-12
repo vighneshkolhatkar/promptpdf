@@ -59,6 +59,7 @@ export default function Home() {
 
   const [isExecuting, setIsExecuting] = useState(false);
   const [resultPreviewPage, setResultPreviewPage] = useState(1);
+  const [applyCount, setApplyCount] = useState(0);
   const [lastResultLog, setLastResultLog] = useState<string[] | null>(null);
   const [lastSplitOutputs, setLastSplitOutputs] = useState<{ name: string; bytes: Uint8Array }[] | undefined>(undefined);
 
@@ -197,6 +198,7 @@ export default function Home() {
       setResultPreviewPage(computePreviewPage(plan.operations));
       setLastResultLog(out.log);
       setLastSplitOutputs(out.splitOutputs);
+      setApplyCount((n) => n + 1);
       setPlan(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not apply this edit plan.");
@@ -210,14 +212,14 @@ export default function Home() {
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
-      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-10">
+      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-12">
         {!fileBytes && (
           <section className="mx-auto max-w-xl">
-            <h1 className="text-center font-serif text-3xl italic">Upload a PDF to get started</h1>
-            <p className="mt-2 text-center text-ink/50">
+            <h1 className="text-center font-serif text-[2.1rem] italic leading-tight">Upload a PDF to get started</h1>
+            <p className="mt-3 text-center font-mono text-[13px] leading-relaxed text-graphite">
               Then just type what you want done — rotate, watermark, sign, redact, merge, and more.
             </p>
-            <div className="mt-8">
+            <div className="mt-9">
               <Dropzone
                 accept="application/pdf"
                 label="Drop your PDF here"
@@ -225,15 +227,15 @@ export default function Home() {
                 onFiles={handleMainFile}
               />
             </div>
-            <div className="mt-6 flex items-center gap-3 text-xs text-ink/35">
-              <div className="h-px flex-1 bg-ink/10" />
+            <div className="mt-7 flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.14em] text-graphite">
+              <div className="h-px flex-1 bg-rule" />
               or
-              <div className="h-px flex-1 bg-ink/10" />
+              <div className="h-px flex-1 bg-rule" />
             </div>
             <button
               type="button"
               onClick={handleStartFromScratch}
-              className="mt-6 w-full rounded-2xl border border-dashed border-ink/15 py-4 text-center text-sm text-ink/60 transition-colors hover:border-accent/50 hover:text-ink"
+              className="mt-7 w-full rounded-sm border border-dashed border-rule py-4 text-center font-mono text-[13px] text-graphite transition-colors hover:border-pen/50 hover:text-ink"
             >
               Create a new PDF from scratch instead
             </button>
@@ -248,17 +250,22 @@ export default function Home() {
                 label={lastResultLog ? "Preview (edited)" : startedFromScratch ? "New document" : fileName ?? "Preview"}
                 initialPage={lastResultLog ? resultPreviewPage : 1}
               />
-              <button type="button" onClick={resetSession} className="text-sm text-ink/50 underline decoration-ink/20 underline-offset-4 hover:text-ink">
+              <button
+                type="button"
+                onClick={resetSession}
+                className="font-mono text-xs text-graphite underline decoration-rule underline-offset-4 hover:text-ink"
+              >
                 {startedFromScratch ? "Start over" : "Upload a different PDF"}
               </button>
 
-              <div className="w-full rounded-2xl border border-ink/10 bg-white/60 p-4">
-                <p className="text-xs font-medium uppercase tracking-wide text-ink/40">Signature</p>
-                <div className="mt-2 flex flex-col gap-2 text-sm">
-                  <button type="button" onClick={() => setShowSignatureModal(true)} className="text-left text-accent hover:underline">
+              <div className="w-full rounded-sm border border-rule bg-paper-raised p-4">
+                <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-graphite">Signature</p>
+                <div className="redact-rule mt-1.5 w-6" />
+                <div className="mt-3 flex flex-col gap-2 font-mono text-[13px]">
+                  <button type="button" onClick={() => setShowSignatureModal(true)} className="text-left text-pen hover:underline">
                     {signature.drawn ? "✓ Signature drawn — redraw" : "Draw a signature"}
                   </button>
-                  <label className="cursor-pointer text-accent hover:underline">
+                  <label className="cursor-pointer text-pen hover:underline">
                     {signature.uploaded ? "✓ Signature image uploaded — replace" : "Upload a signature image"}
                     <input
                       type="file"
@@ -275,17 +282,20 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="w-full rounded-2xl border border-ink/10 bg-white/60 p-4">
-                <p className="text-xs font-medium uppercase tracking-wide text-ink/40">Additional files</p>
-                <p className="mt-1 text-xs text-ink/50">For merging or stamping — reference by name in your prompt.</p>
-                <ul className="mt-2 space-y-1 text-sm">
+              <div className="w-full rounded-sm border border-rule bg-paper-raised p-4">
+                <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-graphite">Additional files</p>
+                <div className="redact-rule mt-1.5 w-6" />
+                <p className="mt-3 font-mono text-[12px] leading-relaxed text-graphite">
+                  For merging or stamping — reference by name in your prompt.
+                </p>
+                <ul className="mt-2 space-y-1 font-mono text-[13px]">
                   {auxFiles.map((f) => (
-                    <li key={f.id} className="text-ink/70">
-                      {f.name} <span className="text-ink/35">({f.kind})</span>
+                    <li key={f.id} className="text-ink">
+                      {f.name} <span className="text-graphite">({f.kind})</span>
                     </li>
                   ))}
                 </ul>
-                <label className="mt-2 inline-block cursor-pointer text-sm text-accent hover:underline">
+                <label className="mt-2 inline-block cursor-pointer font-mono text-[13px] text-pen hover:underline">
                   + Add file
                   <input type="file" accept="application/pdf,image/png,image/jpeg" multiple className="hidden" onChange={(e) => handleAuxFiles(Array.from(e.target.files ?? []))} />
                 </label>
@@ -294,10 +304,12 @@ export default function Home() {
 
             <div className="flex flex-col gap-5">
               {conversation.length > 0 && (
-                <div className="grain-card flex flex-col gap-3 rounded-2xl p-4 shadow-card">
+                <div className="flex flex-col gap-3 rounded-sm border border-rule bg-paper-raised p-4 shadow-page">
                   {conversation.map((m, i) => (
-                    <p key={i} className={`text-sm ${m.role === "user" ? "text-ink" : "text-accent"}`}>
-                      <span className="mr-2 text-xs font-medium uppercase tracking-wide opacity-50">{m.role === "user" ? "You" : "PromptPDF"}</span>
+                    <p key={i} className={`font-mono text-[13px] leading-relaxed ${m.role === "user" ? "text-ink" : "text-pen"}`}>
+                      <span className="mr-2 text-[10px] font-semibold uppercase tracking-[0.1em] opacity-60">
+                        {m.role === "user" ? "You" : "PromptPDF"}
+                      </span>
                       {m.content}
                     </p>
                   ))}
@@ -314,15 +326,15 @@ export default function Home() {
               <SuggestionChips onSelect={setPrompt} prompts={startedFromScratch ? CREATE_SUGGESTED_PROMPTS : SUGGESTED_PROMPTS} />
 
               {error && (
-                <div className="rounded-2xl border border-clay/30 bg-clay/5 p-4 text-sm text-clay">{error}</div>
+                <div className="rounded-sm border border-pen/30 bg-pen-soft px-4 py-3 font-mono text-[13px] text-pen">{error}</div>
               )}
 
               {plan && !plan.clarificationNeeded && plan.operations.length > 0 && (
                 <div className="flex flex-col gap-3">
                   <OperationLog title="Proposed plan" items={plan.operations.map(describeOperation)} tone="plan" />
-                  <p className="text-sm text-ink/60">{plan.explanation}</p>
+                  <p className="font-mono text-[12.5px] leading-relaxed text-graphite">{plan.explanation}</p>
                   {warnings.length > 0 && (
-                    <ul className="space-y-1 text-sm text-clay">
+                    <ul className="space-y-1 font-mono text-[13px] text-pen">
                       {warnings.map((w, i) => (
                         <li key={i}>⚠ {w}</li>
                       ))}
@@ -333,14 +345,14 @@ export default function Home() {
                       type="button"
                       onClick={handleApply}
                       disabled={isExecuting || warnings.length > 0}
-                      className="rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-white disabled:opacity-40"
+                      className="rounded-sm bg-pen px-5 py-2.5 font-mono text-[13px] font-semibold text-paper-raised transition-opacity hover:opacity-90 disabled:opacity-40"
                     >
                       {isExecuting ? "Applying…" : "Apply changes"}
                     </button>
                     <button
                       type="button"
                       onClick={() => setPlan(null)}
-                      className="rounded-full border border-ink/15 px-5 py-2.5 text-sm hover:border-ink/30"
+                      className="rounded-sm border border-rule px-5 py-2.5 font-mono text-[13px] hover:border-graphite"
                     >
                       Discard
                     </button>
@@ -349,13 +361,13 @@ export default function Home() {
               )}
 
               {lastResultLog && (
-                <div className="flex flex-col gap-3">
+                <div key={applyCount} className="flex origin-left flex-col gap-3 animate-stamp-down">
                   <OperationLog title="Done" items={lastResultLog} tone="result" />
                   <div className="flex flex-wrap gap-3">
                     <button
                       type="button"
                       onClick={() => download(fileBytes, fileName ?? "document.pdf")}
-                      className="rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-white"
+                      className="rounded-sm bg-pen px-5 py-2.5 font-mono text-[13px] font-semibold text-paper-raised transition-opacity hover:opacity-90"
                     >
                       Download PDF
                     </button>
@@ -364,7 +376,7 @@ export default function Home() {
                         key={part.name}
                         type="button"
                         onClick={() => download(part.bytes, part.name)}
-                        className="rounded-full border border-ink/15 px-5 py-2.5 text-sm hover:border-ink/30"
+                        className="rounded-sm border border-rule px-5 py-2.5 font-mono text-[13px] hover:border-graphite"
                       >
                         Download {part.name}
                       </button>

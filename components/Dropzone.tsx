@@ -38,8 +38,8 @@ export function Dropzone({ accept, multiple, label, hint, onFiles }: DropzonePro
         setIsDragging(false);
         handleFiles(e.dataTransfer.files);
       }}
-      className={`grain-card cursor-pointer rounded-2xl border-2 border-dashed px-6 py-10 text-center transition-colors ${
-        isDragging ? "border-accent bg-accentSoft" : "border-ink/15 hover:border-accent/50"
+      className={`cursor-pointer rounded-sm border-2 border-dashed px-6 py-12 text-center transition-colors ${
+        isDragging ? "border-pen bg-pen-soft" : "border-rule bg-paper-raised hover:border-graphite"
       }`}
     >
       <input
@@ -51,7 +51,7 @@ export function Dropzone({ accept, multiple, label, hint, onFiles }: DropzonePro
         onChange={(e) => handleFiles(e.target.files)}
       />
       <p className="font-serif text-lg italic text-ink">{label}</p>
-      <p className="mt-1 text-sm text-ink/50">{hint}</p>
+      <p className="mt-1.5 font-mono text-xs text-graphite">{hint}</p>
     </div>
   );
 }

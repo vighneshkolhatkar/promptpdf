@@ -1,9 +1,20 @@
 import type { Metadata } from "next";
-import { Inter, Newsreader } from "next/font/google";
+import { Spectral, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
-const sans = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
-const serif = Newsreader({ subsets: ["latin"], variable: "--font-serif", display: "swap", style: ["italic", "normal"] });
+const serif = Spectral({
+  subsets: ["latin"],
+  variable: "--font-serif",
+  display: "swap",
+  weight: ["400", "500", "600"],
+  style: ["italic", "normal"],
+});
+const mono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+  display: "swap",
+  weight: ["400", "500", "600"],
+});
 
 export const metadata: Metadata = {
   title: "PromptPDF — edit PDFs by typing what you want",
@@ -13,8 +24,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${sans.variable} ${serif.variable}`} suppressHydrationWarning>
-      <body className="min-h-screen font-sans text-ink antialiased">{children}</body>
+    <html lang="en" className={`${serif.variable} ${mono.variable}`} suppressHydrationWarning>
+      <body className="min-h-screen font-mono text-ink antialiased">{children}</body>
     </html>
   );
 }

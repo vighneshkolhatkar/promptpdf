@@ -56,12 +56,12 @@ interface OperationLogProps {
 export function OperationLog({ title, items, tone = "plan" }: OperationLogProps) {
   if (items.length === 0) return null;
   return (
-    <div className="grain-card rounded-2xl p-4 shadow-card">
-      <p className="text-xs font-medium uppercase tracking-wide text-ink/40">{title}</p>
-      <ul className="mt-2 space-y-1.5">
+    <div className="rounded-sm border border-rule bg-paper-raised p-4 shadow-page">
+      <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-graphite">{title}</p>
+      <ul className="mt-2.5 space-y-2">
         {items.map((item, i) => (
-          <li key={i} className="flex gap-2 text-sm text-ink/80">
-            <span className={tone === "plan" ? "text-accent" : "text-clay"}>{tone === "plan" ? "→" : "✓"}</span>
+          <li key={i} className="flex gap-2 font-mono text-[13px] leading-snug text-ink">
+            <span className={tone === "plan" ? "text-pen" : "text-graphite"}>{tone === "plan" ? "→" : "✓"}</span>
             <span>{item}</span>
           </li>
         ))}

@@ -31,8 +31,9 @@ export function SuggestionChips({ onSelect, prompts = SUGGESTED_PROMPTS }: Sugge
           key={p}
           type="button"
           onClick={() => onSelect(p)}
-          className="rounded-full border border-ink/15 bg-white px-3 py-1.5 text-sm text-ink/70 transition-colors hover:border-accent/50 hover:text-ink"
+          className="rounded-sm border border-rule bg-paper-raised px-3 py-1.5 font-mono text-[12.5px] text-graphite transition-colors hover:border-pen/50 hover:text-ink"
         >
+          <span className="mr-1.5 text-pen">→</span>
           {p}
         </button>
       ))}

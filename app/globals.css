@@ -2,21 +2,65 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  html {
-    color-scheme: light;
+:root {
+  --color-paper: #fbfaf7;
+  --color-paper-raised: #ffffff;
+  --color-ink: #1c1b19;
+  --color-graphite: #6b675f;
+  --color-pen: #c1432e;
+  --color-pen-soft: #f4e3de;
+  --color-redact: #171614;
+  --color-rule: #e4e1d9;
+  --shadow-tint: 23, 22, 20;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-paper: #171613;
+    --color-paper-raised: #201f1c;
+    --color-ink: #f3f1ea;
+    --color-graphite: #a39e92;
+    --color-pen: #e2593f;
+    --color-pen-soft: #3a2420;
+    --color-redact: #000000;
+    --color-rule: #35332e;
+    --shadow-tint: 0, 0, 0;
+    color-scheme: dark;
   }
+}
+
+@layer base {
   body {
-    background-color: #faf9f6;
-    background-image:
-      radial-gradient(circle at 1px 1px, rgba(17, 19, 24, 0.06) 1px, transparent 0);
-    background-size: 24px 24px;
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    /* A faint, warm paper grain — restrained, not a decorative pattern. */
+    background-image: radial-gradient(rgba(107, 103, 95, 0.05) 0.5px, transparent 0.5px);
+    background-size: 3px 3px;
+  }
+  ::selection {
+    background-color: var(--color-pen-soft);
+    color: var(--color-ink);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-pen);
+    outline-offset: 2px;
   }
 }
 
 @layer utilities {
-  .grain-card {
-    background-color: #ffffff;
-    border: 1px solid rgba(17, 19, 24, 0.08);
+  .redact-rule {
+    background-color: var(--color-redact);
+    height: 3px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
   }
 }

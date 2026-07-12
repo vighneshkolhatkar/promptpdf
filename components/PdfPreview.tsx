@@ -77,20 +77,20 @@ export function PdfPreview({ bytes, label, initialPage }: PdfPreviewProps) {
   if (!bytes) return null;
 
   return (
-    <div className="grain-card flex flex-col items-center gap-2 rounded-2xl p-4 shadow-card">
-      <canvas ref={canvasRef} className="rounded-md border border-ink/10" />
-      {error && <p className="text-xs text-clay">{error}</p>}
+    <div className="flex flex-col items-center gap-3 rounded-sm bg-paper-raised p-4 shadow-page">
+      <canvas ref={canvasRef} className="border border-rule" />
+      {error && <p className="font-mono text-xs text-pen">{error}</p>}
       <div className="flex items-center gap-3">
         <button
           type="button"
           onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
           disabled={currentPage <= 1}
           aria-label="Previous page"
-          className="text-ink/40 hover:text-ink disabled:opacity-25"
+          className="text-graphite hover:text-ink disabled:opacity-25"
         >
           ‹
         </button>
-        <p className="text-xs text-ink/50">
+        <p className="font-mono text-[11px] text-graphite">
           {label}
           {pageCount ? ` · page ${Math.min(Math.max(currentPage, 1), pageCount)} of ${pageCount}` : ""}
         </p>
@@ -99,7 +99,7 @@ export function PdfPreview({ bytes, label, initialPage }: PdfPreviewProps) {
           onClick={() => setCurrentPage((p) => Math.min(pageCount ?? p, p + 1))}
           disabled={!pageCount || currentPage >= pageCount}
           aria-label="Next page"
-          className="text-ink/40 hover:text-ink disabled:opacity-25"
+          className="text-graphite hover:text-ink disabled:opacity-25"
         >
           ›
         </button>

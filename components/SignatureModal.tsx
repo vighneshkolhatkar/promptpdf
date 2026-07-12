@@ -36,7 +36,7 @@ export function SignatureModal({ onSave, onClose }: SignatureModalProps) {
     ctx.lineTo(x, y);
     ctx.lineWidth = 2.5;
     ctx.lineCap = "round";
-    ctx.strokeStyle = "#111318";
+    ctx.strokeStyle = "#1c1b19";
     ctx.stroke();
     setHasStroke(true);
   };
@@ -64,10 +64,10 @@ export function SignatureModal({ onSave, onClose }: SignatureModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-4">
-      <div className="grain-card w-full max-w-md rounded-2xl p-6 shadow-card">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-redact/50 px-4">
+      <div className="w-full max-w-md rounded-sm border border-rule bg-paper-raised p-6 shadow-page">
         <h2 className="font-serif text-xl italic">Draw your signature</h2>
-        <p className="mt-1 text-sm text-ink/50">Use your mouse, trackpad, or finger.</p>
+        <p className="mt-1 font-mono text-xs text-graphite">Use your mouse, trackpad, or finger.</p>
         <canvas
           ref={canvasRef}
           width={400}
@@ -76,17 +76,17 @@ export function SignatureModal({ onSave, onClose }: SignatureModalProps) {
           onPointerMove={move}
           onPointerUp={end}
           onPointerLeave={end}
-          className="mt-4 w-full touch-none rounded-lg border border-ink/15 bg-white"
+          className="mt-4 w-full touch-none rounded-sm border border-rule bg-paper"
         />
         <div className="mt-4 flex items-center justify-between">
-          <button type="button" onClick={clear} className="text-sm text-ink/50 hover:text-ink">
+          <button type="button" onClick={clear} className="font-mono text-xs text-graphite hover:text-ink">
             Clear
           </button>
           <div className="flex gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-full border border-ink/15 px-4 py-2 text-sm hover:border-ink/30"
+              className="rounded-sm border border-rule px-4 py-2 font-mono text-[13px] hover:border-graphite"
             >
               Cancel
             </button>
@@ -94,7 +94,7 @@ export function SignatureModal({ onSave, onClose }: SignatureModalProps) {
               type="button"
               disabled={!hasStroke}
               onClick={save}
-              className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+              className="rounded-sm bg-pen px-4 py-2 font-mono text-[13px] font-semibold text-paper-raised disabled:opacity-40"
             >
               Save signature
             </button>
