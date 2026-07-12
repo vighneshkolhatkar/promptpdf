@@ -23,7 +23,7 @@
     "regenerator-runtime": "0.14.1"
   },
   "devDependencies": {
-    "typescript": "5.9.3",
+    "typescript": "7.0.2",
     "@types/node": "20.14.15",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
